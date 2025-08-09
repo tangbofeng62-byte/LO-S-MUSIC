@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lorrin's Music</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#1A1A1A',
+            secondary: '#333333',
+            dark: '#0A0A0A',
+            light: '#F7FAFC',
+            accent: '#F97316', // 橙色
+            darkPurple: '#121212'
+          },
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+          },
+          animation: {
+            'float': 'float 6s ease-in-out infinite',
+            'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+          },
+          keyframes: {
+            float: {
+              '0%, 100%': { transform: 'translateY(0)' },
+              '50%': { transform: 'translateY(-10px)' },
+            }
+          }
+        },
+      }
+    }
+  </script>
+  <style type="text/tailwindcss">
+    @layer utilities {
+      .bg-gradient-custom {
+        background: linear-gradient(135deg, #0A0A0A 0%, #1A1A1A 40%, #333333 70%, #444444 100%);
+      }
+      .bg-dark-overlay {
+        background: rgba(26, 32, 44, 0.7);
+      }
+      .text-shadow {
+        text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      }
+      .backdrop-blur-xl {
+        backdrop-filter: blur(24px);
+      }
+      .player-glass {
+        background: rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(16px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+      }
+      .lyrics-container {
+        height: 140px;
+        overflow-y: auto;
+        scrollbar-width: none;
+        position: relative;
+      }
+      .lyrics-container::-webkit-scrollbar {
+        display: none;
+      }
+      .lyric-item {
+        transition: all 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+        opacity: 0.7;
+      }
+      .lyric-item.active {
+        color: #F97316;
+        transform: scale(1.1);
+        font-weight: 600;
+        opacity: 1;
+        text-shadow: 0 0 10px rgba(249, 115, 22, 0.5);
+        animation: pulse 2s infinite;
+      }
+      .lyric-item.prev {
+        transform: translateY(5px);
+        opacity: 0.8;
+      }
+      .lyric-item.next {
+        transform: translateY(-5px);
+        opacity: 0.8;
+      }
+      @keyframes pulse {
+        0% {
+          opacity: 1;
+          text-shadow: 0 0 10px rgba(249, 115, 22, 0.5);
+        }
+        50% {
+          opacity: 0.9;
+          text-shadow: 0 0 15px rgba(249, 115, 22, 0.7);
+        }
+        100% {
+          opacity: 1;
+          text-shadow: 0 0 10px rgba(249, 115, 22, 0.5);
+        }
+      }
+    }
+  </style>
+</head>
+<body class="min-h-screen bg-black overflow-auto font-sans text-light flex flex-col items-center justify-between p-6">
+  <!-- 欢迎界面 -->
+  <div id="welcomeScreen" class="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/95 transition-all duration-1500 ease-in-out">
+    <!-- 背景装饰 -->
+    <div class="absolute inset-0 overflow-hidden pointer-events-none">
+      <div class="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/30 rounded-full filter blur-[100px] animate-pulse-slow"></div>
+        <div class="absolute bottom-1/4 right-1/4 w-80 h-80 bg-accent/20 rounded-full filter blur-[80px] animate-pulse-slow" style="animation-delay: 2s"></div>
+        <div class="absolute top-1/2 right-1/3 w-64 h-64 bg-secondary/20 rounded-full filter blur-[90px] animate-pulse-slow" style="animation-delay: 1s"></div>
+    </div>
+
+    <div class="text-center p-8 rounded-3xl bg-gradient-to-br from-primary/20 to-dark/30 backdrop-blur-xl border border-white/10 max-w-md mx-4 transform transition-all duration-700 hover:scale-105 hover:shadow-[0_0_30px_rgba(50,50,50,0.3)]">
+      <h1 class="text-4xl md:text-5xl font-bold mb-4 text-shadow tracking-wider">欢迎使用</h1>
+      <h2 class="text-5xl md:text-6xl font-bold mb-8 text-transparent bg-clip-text bg-gradient-to-r from-gray-300 to-gray-500 font-black tracking-tight leading-tight">Lorrin's Music</h2>
+      <p class="text-white/70 mb-8 transition-opacity duration-500 hover:text-white/90">点击任意位置开始使用</p>
+      <div class="w-40 h-1 bg-gradient-to-r from-gray-400 to-gray-600 mx-auto rounded-full animate-pulse-slow"></div>
+    </div>
+  </div>
+  <!-- 动态背景图片容器 -->
+  <div id="dynamicBackground" class="fixed inset-0 z-0 overflow-hidden pointer-events-none"></div>
+
+<!-- 背景装饰元素已移除 -->
+
+  <script>
+    // 动态加载背景图片并添加动画 - 优化版（懒加载+预加载）
+    document.addEventListener('DOMContentLoaded', function() {
+      const backgroundContainer = document.getElementById('dynamicBackground');
+      const imagesPerRow = 5; // 每行图片数量
+      const imageWidth = 240; // 保持图片宽度
+      const imageHeight = 240; // 保持图片高度
+      const animationDuration = 180; // 动画周期（秒）
+      const gap = 90; // 保持图片间距
+      const totalWidth = (imageWidth + gap) * imagesPerRow;
+      const totalHeight = 180; // 垂直移动距离
+
+      // 图片预加载函数
+      function preloadImages(imageUrls) {
+        return Promise.all(imageUrls.map(url => {
+          return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => resolve(img);
+            img.onerror = reject;
+            img.src = url;
+          });
+        }));
+      }
+
+      // 图片URL列表
+      const imageUrls = [];
+      for (let i = 1; i <= 30; i++) {
+        imageUrls.push(`album${i}.svg`);
+      }
+
+      // 先加载关键图片（前15张），然后加载剩余图片
+      const criticalImages = imageUrls.slice(0, 15);
+      const nonCriticalImages = imageUrls.slice(15);
+
+      // 预加载关键图片
+      preloadImages(criticalImages)
+        .then(() => {
+          console.log('关键图片加载完成');
+          // 创建多个图片容器层以实现深度效果
+          createBackgroundLayers();
+          // 懒加载非关键图片
+          setTimeout(() => {
+            preloadImages(nonCriticalImages)
+              .then(() => console.log('所有图片加载完成'))
+              .catch(err => console.error('非关键图片加载失败:', err));
+          }, 1000);
+        })
+        .catch(err => console.error('关键图片加载失败:', err));
+
+      function createBackgroundLayers() {
+        for (let layer = 0; layer < 3; layer++) { 
+          // 创建图片容器
+          const imageContainer = document.createElement('div');
+          imageContainer.className = 'absolute whitespace-nowrap';
+          imageContainer.style.top = `${layer * 280}px`;
+          imageContainer.style.opacity = `${0.9 - layer * 0.15}`; // 前景层更清晰
+          
+          // 设置动画方向：第1层和第3层向左，第2层向右
+          let animationName = 'scrollLeft';
+          if (layer === 1) {
+            animationName = 'scrollRight';
+          }
+          imageContainer.style.animation = `${animationName} ${animationDuration + layer * 40}s linear infinite ${layer * 8}s`;
+
+          // 创建并添加对应范围的图片
+          let group1Start, group1End, group2Start, group2End;
+          if (layer === 0) {
+            group1Start = 1; group1End = 5;    // 第一层第一组：album1到album5
+            group2Start = 16; group2End = 20;  // 第一层第二组：album16到album20
+          } else if (layer === 1) {
+            group1Start = 6; group1End = 10;   // 第二层第一组：album6到album10
+            group2Start = 21; group2End = 25;  // 第二层第二组：album21到album25
+          } else {
+            group1Start = 11; group1End = 15;  // 第三层第一组：album11到album15
+            group2Start = 26; group2End = 30;  // 第三层第二组：album26到album30
+          }
+
+          // 加载第一组图片
+          for (let i = group1Start; i <= group1End; i++) {
+            const img = document.createElement('img');
+            img.src = `album${i}.svg`;
+            img.alt = `Album ${i}`;
+            img.className = 'inline-block w-[240px] h-[240px] object-cover opacity-80 hover:opacity-100 transition-all duration-300 mr-[90px] transform hover:scale-110';
+            img.style.transform = `rotate(${Math.random() * 3 - 1.5}deg)`;
+            img.style.filter = 'drop-shadow(0 8px 10px rgba(0, 0, 0, 0.2))';
+            img.style.imageRendering = 'pixelated';
+            imageContainer.appendChild(img);
+          }
+
+          // 加载第二组图片 (使用data-src实现懒加载)
+          for (let i = group2Start; i <= group2End; i++) {
+            const img = document.createElement('img');
+            img.dataset.src = `album${i}.svg`; // 存储真实图片地址
+            img.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQwIiBoZWlnaHQ9IjI0MCIgdmlld0JveD0iMCAwIDI0MCAyNDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHJlY3QgeD0iMCIgeT0iMCIgd2lkdGg9IjI0MCIgaGVpZ2h0PSIyNDAiIGZpbGw9IiMwMDAiLz48L3N2Zz4='; // 占位图
+            img.alt = `Album ${i}`;
+            img.className = 'inline-block w-[240px] h-[240px] object-cover opacity-80 hover:opacity-100 transition-all duration-300 mr-[90px] transform hover:scale-110 lazy-load';
+            img.style.transform = `rotate(${Math.random() * 3 - 1.5}deg)`;
+            img.style.filter = 'drop-shadow(0 8px 10px rgba(0, 0, 0, 0.2))';
+            img.style.imageRendering = 'pixelated';
+            imageContainer.appendChild(img);
+          }
+
+          // 复制一份图片以实现无缝滚动
+          const cloneContainer = imageContainer.cloneNode(true);
+          cloneContainer.style.marginLeft = `-${totalWidth * 2}px`;  // 因为现在每组有两组图片，宽度翻倍
+
+          backgroundContainer.appendChild(imageContainer);
+          backgroundContainer.appendChild(cloneContainer);
+        }
+
+        // 实现懒加载
+        const lazyLoadImages = document.querySelectorAll('.lazy-load');
+        const lazyLoadObserver = new IntersectionObserver((entries, observer) => {
+          entries.forEach(entry => {
+            if (entry.isIntersecting) {
+              const img = entry.target;
+              img.src = img.dataset.src;
+              img.classList.remove('lazy-load');
+              lazyLoadObserver.unobserve(img);
+            }
+          });
+        });
+
+        lazyLoadImages.forEach(img => {
+          lazyLoadObserver.observe(img);
+        });
+      }
+
+      // 定义滚动动画：向左和向右
+      const style = document.createElement('style');
+      style.textContent = `
+        @keyframes scrollLeft {
+          0% {
+            transform: translate(0, 0);
+          }
+          100% {
+            transform: translate(${-totalWidth}px, -${totalHeight}px);
+          }
+        }
+        
+        @keyframes scrollRight {
+          0% {
+            transform: translate(${-totalWidth}px, -${totalHeight}px);
+          }
+          100% {
+            transform: translate(0, 0);
+          }
+        }
+      `;
+      document.head.appendChild(style);
+    });
+  </script>
+
+  <!-- 头部区域 -->
+  <header class="relative z-10 w-full flex justify-between items-center pt-4 pb-2 mb-40">
+    <div class="text-5xl md:text-7xl font-bold text-shadow flex items-center space-x-2">
+      <img src="music_logo.svg" alt="音乐logo" class="w-12 h-12 md:w-16 md:h-16 inline-block mr-2">
+      <span>Lorrin's music</span>
+    </div>
+    <button class="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-all duration-300">
+      <i class="fa fa-random" aria-hidden="true"></i>
+    </button>
+  </header>
+
+  <!-- 主内容区 -->
+  <main class="relative z-10 flex flex-col items-center justify-center flex-grow w-full max-w-md mx-auto">
+    <!-- 专辑封面容器 - 包含当前、上一首和下一首 -->
+    <div class="flex items-center justify-center space-x-6 md:space-x-10 mb-8">
+      <!-- 上一首歌曲封面 (Julie) -->
+      <div id="prevAlbumCover" class="relative w-48 h-48 md:w-60 md:h-60 rounded-2xl shadow-xl overflow-hidden opacity-60 transform scale-90 -rotate-6 hover:opacity-90 hover:scale-100 hover:-rotate-3 hover:shadow-2xl transition-all duration-300 cursor-pointer border-2 border-blue-500">
+        <img src="album15.svg" alt="Julie专辑封面" class="w-full h-full object-cover">
+        <div class="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent flex items-end p-3">
+          <p class="text-white font-medium">Julie</p>
+        </div>
+        <div class="absolute top-3 left-3 bg-black/50 text-white text-xs px-2 py-1 rounded-full">
+          <i class="fa fa-step-backward mr-1"></i> 上一首
+        </div>
+      </div>
+
+      <!-- 当前歌曲封面 (不称职的天才) -->
+      <div id="currentAlbumCover" class="relative w-64 h-64 md:w-80 md:h-80 rounded-3xl shadow-[0_0_30px_rgba(249,115,22,0.5)] overflow-hidden animate-float z-10 border-2 border-accent/50 transform transition-all duration-500 hover:scale-105 hover:shadow-[0_0_40px_rgba(249,115,22,0.7)]">
+        <img src="album2.svg" alt="不称职的天才专辑封面" class="w-full h-full object-cover transform transition-transform duration-700 hover:scale-110">
+        <div class="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent flex items-end p-4">
+          <p class="text-white font-bold text-lg drop-shadow-lg">不称职的天才</p>
+        </div>
+        <div class="absolute inset-0 bg-gradient-radial from-accent/20 to-transparent opacity-50"></div>
+      </div>
+
+      <!-- 下一首歌曲封面 (焦虑) -->
+      <div id="nextAlbumCover" class="relative w-48 h-48 md:w-60 md:h-60 rounded-2xl shadow-xl overflow-hidden opacity-60 transform scale-90 rotate-6 hover:opacity-90 hover:scale-100 hover:rotate-3 hover:shadow-2xl transition-all duration-300 cursor-pointer border-2 border-blue-500">
+        <img src="album1.svg" alt="焦虑专辑封面" class="w-full h-full object-cover">
+        <div class="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent flex items-end p-3">
+          <p class="text-white font-medium">焦虑</p>
+        </div>
+        <div class="absolute top-3 right-3 bg-black/50 text-white text-xs px-2 py-1 rounded-full">
+          下一首 <i class="fa fa-step-forward ml-1"></i>
+        </div>
+      </div>
+    </div>
+
+    <!-- 音乐信息 - 移到专辑封面下方 -->
+    <div class="text-center mb-6 w-full max-w-xs">
+      <h2 id="songTitle" class="text-2xl font-bold mb-1">歌曲名称</h2>
+      <p id="artistName" class="text-white/70 mb-2">艺术家</p>
+
+      <!-- 控制按钮 - 移到此处 -->
+      <div class="flex items-center justify-center space-x-10 mt-2">
+        <button class="text-white/70 hover:text-white transition-colors p-2">
+          <i class="fa fa-step-backward text-4xl" aria-hidden="true"></i>
+        </button>
+        <button id="footerPlayBtn" class="text-accent hover:scale-105 transition-all duration-300 p-2">
+          <i class="fa fa-play text-3xl" aria-hidden="true"></i>
+        </button>
+        <button class="text-white/70 hover:text-white transition-colors p-2">
+          <i class="fa fa-step-forward text-4xl" aria-hidden="true"></i>
+        </button>
+      </div>
+    </div>
+  </main>
+
+  <!-- 歌词显示区域 -->
+  <div class="relative z-10 w-full max-w-md mx-auto mt-2 player-glass rounded-2xl p-4 shadow-lg overflow-hidden">
+    <div id="lyricsContainer" class="h-48 overflow-hidden text-center py-2">
+      <div id="lyricsList" class="space-y-3 min-h-[120px]">
+        <!-- 歌词将通过JavaScript动态加载 -->
+      </div>
+    </div>
+  </div>
+
+  <!-- 底部播放器 -->
+  <footer class="relative z-10 w-full max-w-md mx-auto mt-2 player-glass rounded-2xl p-4 shadow-lg">
+    <div class="flex flex-col space-y-3">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+          <img id="footerAlbumCover" src="album2.svg" alt="专辑封面" class="w-10 h-10 rounded-lg object-cover">
+          <div>
+            <p id="footerSongTitle" class="font-medium text-sm truncate w-32">当前播放</p>
+            <p id="footerArtistName" class="text-white/70 text-xs">艺术家</p>
+          </div>
+        </div>
+        <div class="flex items-center space-x-2">
+          <button id="volumeBtn" class="text-white/70 hover:text-white transition-colors p-1">
+            <i class="fa fa-volume-up" aria-hidden="true"></i>
+          </button>
+          <input type="range" id="volumeSlider" min="0" max="1" step="0.05" value="0.7" class="w-20 h-1 bg-white/30 rounded-full appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-accent"/>
+        </div>
+      </div>
+
+      <!-- 进度条 - 移到底部播放器 -->
+      <div class="w-full">
+        <div class="relative h-2 md:h-3 bg-white/30 rounded-full overflow-hidden cursor-pointer group">
+          <div id="progressBar" class="absolute h-full bg-accent rounded-full w-0 transition-all duration-300 group-hover:bg-accent/90"></div>
+          <div class="absolute h-4 w-4 bg-accent rounded-full shadow-lg top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-300" id="progressHandle"></div>
+        </div>
+        <div class="flex justify-between text-xs md:text-sm mt-1 text-white/70">
+          <span id="currentTime">0:00</span>
+          <span id="duration">0:00</span>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- 音频元素 -->
+    <audio id="audioPlayer" preload="auto" crossorigin="anonymous">您的浏览器不支持音频播放</audio>
+
+  <script src="lyrics_display.js"></script>
+  <script src="player_script.js"></script>
+        <script>
+          // 为左右专辑封面添加点击事件
+          document.addEventListener('DOMContentLoaded', function() {
+            // 获取左右专辑封面元素
+            const prevAlbumCover = document.getElementById('prevAlbumCover');
+            const nextAlbumCover = document.getElementById('nextAlbumCover');
+
+            // 添加点击事件监听器
+            if (prevAlbumCover) {
+              prevAlbumCover.addEventListener('click', function() {
+                if (window.prevSong) {
+                  window.prevSong();
+                }
+              });
+            }
+
+            if (nextAlbumCover) {
+              nextAlbumCover.addEventListener('click', function() {
+                if (window.nextSong) {
+                  window.nextSong();
+                }
+              });
+            }
+          });
+        </script>
+</body>
+</html>
